@@ -169,9 +169,16 @@ def transcribe(ref_audio, language=None):
 
 
 def load_checkpoint(model, ckpt_path, device: str, dtype=None, use_ema=True):
+    # 确保设备参数是字符串
+    device_str = str(device) if isinstance(device, torch.device) else device
+
     if dtype is None:
         dtype = (
-            torch.float16 if "cuda" in device and torch.cuda.get_device_properties(device).major >= 6 else torch.float32
+            torch.float16 
+            if isinstance(device, str) and "cuda" in device or 
+               (isinstance(device, torch.device) and device.type == "cuda") and 
+               torch.cuda.get_device_properties(device).major >= 6 
+            else torch.float32
         )
     model = model.to(dtype)
 
@@ -179,7 +186,8 @@ def load_checkpoint(model, ckpt_path, device: str, dtype=None, use_ema=True):
     if ckpt_type == "safetensors":
         from safetensors.torch import load_file
 
-        checkpoint = load_file(ckpt_path, device=device)
+        # 使用字符串格式的设备参数
+        checkpoint = load_file(ckpt_path, device=device_str)
     else:
         checkpoint = torch.load(ckpt_path, map_location=device, weights_only=True)
 
@@ -536,3 +544,11 @@ def save_spectrogram(spectrogram, path):
     plt.colorbar()
     plt.savefig(path)
     plt.close()
+
+
+# 确保张量被正确地移动到GPU
+def process_batch(batch, device):
+    # ...
+    batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v 
+             for k, v in batch.items()}
+    # ...

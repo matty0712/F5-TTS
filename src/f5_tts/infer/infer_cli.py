@@ -9,6 +9,7 @@ import numpy as np
 import soundfile as sf
 import tomli
 from cached_path import cached_path
+import torch
 
 from f5_tts.infer.utils_infer import (
     infer_process,
@@ -219,7 +220,9 @@ def main_process(ref_audio, ref_text, text_gen, model_obj, mel_spec_type, remove
 
 
 def main():
-    main_process(ref_audio, ref_text, gen_text, ema_model, mel_spec_type, remove_silence, speed)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = ema_model.to(device)
+    main_process(ref_audio, ref_text, gen_text, model, mel_spec_type, remove_silence, speed)
 
 
 if __name__ == "__main__":

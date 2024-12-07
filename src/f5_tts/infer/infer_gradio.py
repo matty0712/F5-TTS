@@ -11,6 +11,7 @@ import gradio as gr
 import numpy as np
 import soundfile as sf
 import torchaudio
+import torch
 from cached_path import cached_path
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -44,14 +45,27 @@ DEFAULT_TTS_MODEL = "F5-TTS"
 tts_model_choice = DEFAULT_TTS_MODEL
 
 
-# load models
+# 在文件开头添加设备信息输出
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"\nInitializing with device: {device}")
 
-vocoder = load_vocoder()
+if torch.cuda.is_available():
+    print(f"GPU Device: {torch.cuda.get_device_name()}")
+    print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    print(f"CUDA Version: {torch.version.cuda}\n")
 
+# 修改vocoder加载
+vocoder = load_vocoder(device=device)
+print(f"Vocoder loaded on device: {next(vocoder.parameters()).device}")
 
+# 修改F5TTS模型加载
 def load_f5tts(ckpt_path=str(cached_path("hf://SWivid/F5-TTS/F5TTS_Base/model_1200000.safetensors"))):
     F5TTS_model_cfg = dict(dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4)
-    return load_model(DiT, F5TTS_model_cfg, ckpt_path)
+    model = load_model(DiT, F5TTS_model_cfg, ckpt_path, device=device)
+    print(f"F5TTS model loaded on device: {next(model.parameters()).device}")
+    return model
+
+F5TTS_ema_model = load_f5tts()
 
 
 def load_e2tts(ckpt_path=str(cached_path("hf://SWivid/E2-TTS/E2TTS_Base/model_1200000.safetensors"))):
@@ -70,7 +84,6 @@ def load_custom(ckpt_path: str, vocab_path="", model_cfg=None):
     return load_model(DiT, model_cfg, ckpt_path, vocab_file=vocab_path)
 
 
-F5TTS_ema_model = load_f5tts()
 E2TTS_ema_model = load_e2tts() if USING_SPACES else None
 custom_ema_model, pre_custom_path = None, ""
 
@@ -839,7 +852,21 @@ If you're having issues, try converting your reference audio to WAV or MP3, clip
     help='The root path (or "mount point") of the application, if it\'s not served from the root ("/") of the domain. Often used when the application is behind a reverse proxy that forwards requests to the application, e.g. set "/myapp" or full URL for application served at "https://example.com/myapp".',
 )
 def main(port, host, share, api, root_path):
-    global app
+    # 添加设备信息输出
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"\nUsing device: {device}")
+    
+    if torch.cuda.is_available():
+        print(f"GPU Device: {torch.cuda.get_device_name()}")
+        print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+        print(f"CUDA Version: {torch.version.cuda}\n")
+    
+    # 检查模型所在设备
+    print(f"F5TTS model device: {next(F5TTS_ema_model.parameters()).device}")
+    if E2TTS_ema_model is not None:
+        print(f"E2TTS model device: {next(E2TTS_ema_model.parameters()).device}")
+    print(f"Vocoder device: {next(vocoder.parameters()).device}\n")
+    
     print("Starting app...")
     app.queue(api_open=api).launch(server_name=host, server_port=port, share=share, show_api=api, root_path=root_path)
 
